@@ -1,0 +1,112 @@
+''' The program models the operation of a DC electric motor with a PID controller. It displays a graph of the set value and speed. 
+The speed of the motor can be changed using a slider.'''
+
+import control
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, Button
+
+
+class PID:
+    ''' PID class that defines parameters: Kp, Kd, Ki '''
+
+    def __init__(self, Kp, Kd, Ki):
+        self.Kp = Kp
+        self.Kd = Kd
+        self.Ki = Ki
+
+
+class MotorControl:
+    ''' DC motor class, which defines the basic parameters of the motor and calculates its transmittance, below
+     the PID controller is taken into account in the motor transmittance.
+     The motor speed versus time graph is plotted.
+     The graph is also updated to reflect the change in engine speed.'''
+
+    def __init__(self, V, Kt, Ke, R, L, J, b, pid,):
+        self.V = V
+        self.Kt = Kt  # torque (Nm/A)
+        self.Ke = Ke  #speed  (V/rad/s)
+        self.R = R  # resistance (Ohm)
+        self.L = L  # inductance(H)
+        self.J = J  # inertia(kg*m^2)
+        self.b = b  # friction coefficient (Nm*s/rad)
+        self.pid = pid
+
+        self.num_motor = np.array([Kt])
+        self.den_motor = np.array([L, R + b, Kt * Ke])
+        self.H = control.tf(self.num_motor, self.den_motor)
+        s = control.TransferFunction.s
+        self.G = pid.Kp + pid.Kd * s + pid.Ki / s
+        self.closed_loop = control.feedback(self.H * self.G, (1 / self.V))
+
+    def update_graph(self, val):
+        self.V = val
+        self.closed_loop = control.feedback(self.H * self.G, (1 / self.V))
+        t, y = control.step_response(self.closed_loop)
+
+        self.line1.set_ydata(y)
+        self.line1.axes.relim()
+        self.line1.axes.autoscale()
+        self.line2.set_ydata(val)
+
+    def update_torque(self, val):
+        self.Kt = val
+        self.num_motor = np.array([self.Kt])
+        self.den_motor = np.array([self.L, self.R + self.b, self.Kt * self.Ke])
+        self.H = control.tf(self.num_motor, self.den_motor)
+        s = control.TransferFunction.s
+        self.G = pid.Kp + pid.Kd * s + pid.Ki / s
+        self.closed_loop = control.feedback(self.H * self.G, (1 / self.V))
+        t, y = control.step_response(self.closed_loop)
+
+        self.line1.set_ydata(y)
+        self.line1.axes.relim()
+        self.line1.axes.autoscale()
+
+    def simulate(self):
+        t, y = control.step_response(self.closed_loop)
+        fig, ax, = plt.subplots()
+        self.line1, = plt.plot(t, y, linewidth=2, color="blue")
+        self.line2 = plt.axhline(self.V, linewidth=1, color="red")
+
+        ax.set_xlabel('Czas [s]')
+        ax.set_ylabel('Prędkość [rad/s]')
+
+        fig.subplots_adjust(left=0.25, bottom=0.35)
+        axfreq1 = fig.add_axes([0.25, 0.1, 0.65, 0.03])
+        speed_slider = Slider(ax=axfreq1,
+                              label='Predkosc',
+                              valmin=52,
+                              valmax=523,
+                              valinit=self.V, )
+
+        axfreq2 = fig.add_axes([0.25, 0.2, 0.65, 0.03])
+        torque_slider = Slider(ax=axfreq2,
+                               label='Obciazenie',
+                               valmin=0,
+                               valmax=1,
+                               valinit=self.Kt, )
+
+        speed_slider.on_changed(self.update_graph)
+        torque_slider.on_changed(self.update_torque)
+
+        plt.show()
+
+
+''' Give initial parameters '''
+V = 400
+Kt = 0.5
+Ke = 1 / V
+R = 1
+L = 0.1
+J = 0.01
+b = 0.1
+
+Kp = 9.9
+Kd = 1.2
+Ki = 0.4
+
+''' Start of the simulation '''
+pid = PID(Kp, Kd, Ki)
+mc = MotorControl(V, Kt, Ke, R, L, J, b, pid)
+mc.simulate()
